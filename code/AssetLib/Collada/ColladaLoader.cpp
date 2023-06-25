@@ -237,6 +237,12 @@ aiNode *ColladaLoader::BuildHierarchy(const ColladaParser &pParser, const Collad
         }
     }
 
+    // [sv] - If the collada node represents an external reference, we save its url in the
+    //        meta data of the aiNode.
+    if (pNode->mID.size() > 3 && pNode->mID.substr(0, 3) == "$$$" ) {
+        AddNodeMetaData(node, "__external_reference__", aiString(pNode->mID.c_str()+3));
+    }
+
     // calculate the transformation matrix for it
     node->mTransformation = pParser.CalculateResultTransform(pNode->mTransforms);
 

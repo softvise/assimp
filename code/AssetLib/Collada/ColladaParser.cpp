@@ -2111,8 +2111,20 @@ void ColladaParser::ReadSceneNode(XmlNode &node, Node *pNode) {
             if (XmlParser::hasAttribute(currentNode, "url")) {
                 std::string s;
                 XmlParser::getStdStrAttribute(currentNode, "url", s);
+                // [sv] - Added support for external references by adding a 'fake' node.
                 if (s[0] != '#') {
-                    ASSIMP_LOG_ERROR("Collada: Unresolved reference format of node");
+                    const std::string s_id = "$$$" + s;
+                    const NodeLibrary::const_iterator itt = mNodeLibrary.find(s_id);
+                    const Node *nd = itt == mNodeLibrary.end() ? nullptr : (*itt).second;
+                    if (nd == nullptr) {
+                        Node *refNode = new Node;
+                        // Marking the node with a magic prefix is a bit fragile but I don't see a
+                        // better solution.
+                        refNode->mID = s_id;
+                        mNodeLibrary[s_id] = refNode;
+                    }
+                    pNode->mNodeInstances.emplace_back();
+                    pNode->mNodeInstances.back().mNode = s_id;
                 } else {
                     pNode->mNodeInstances.emplace_back();
                     pNode->mNodeInstances.back().mNode = s.c_str() + 1;
