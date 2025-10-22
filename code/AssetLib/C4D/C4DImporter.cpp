@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2021, assimp team
+Copyright (c) 2006-2025, assimp team
 All rights reserved.
 
 Redistribution and use of this software in source and binary forms,
@@ -46,10 +46,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // no #ifdefing here, Cinema4D support is carried out in a branch of assimp
 // where it is turned on in the CMake settings.
 
-#ifndef _MSC_VER
-#   error C4D support is currently MSVC only
-#endif
-
 #include "C4DImporter.h"
 #include <memory>
 #include <assimp/IOSystem.hpp>
@@ -68,7 +64,7 @@ namespace {
 
 aiString aiStringFrom(cineware::String const & cinestring) {
     aiString result;
-    cinestring.GetCString(result.data, MAXLEN-1);
+    cinestring.GetCString(result.data, AI_MAXLEN - 1);
     result.length = static_cast<ai_uint32>(cinestring.GetLength());
     return result;
 }
@@ -90,7 +86,7 @@ namespace Assimp {
     }
 }
 
-static const aiImporterDesc desc = {
+static constexpr aiImporterDesc desc = {
     "Cinema4D Importer",
     "",
     "",
@@ -103,15 +99,8 @@ static const aiImporterDesc desc = {
     "c4d"
 };
 
-
 // ------------------------------------------------------------------------------------------------
-C4DImporter::C4DImporter() = default;
-
-// ------------------------------------------------------------------------------------------------
-C4DImporter::~C4DImporter() = default;
-
-// ------------------------------------------------------------------------------------------------
-bool C4DImporter::CanRead( const std::string& pFile, IOSystem* /*pIOHandler*/, bool /*checkSig*/) const {
+bool C4DImporter::CanRead( const std::string& pFile, IOSystem* pIOHandler, bool checkSig) const {
     const std::string& extension = GetExtension(pFile);
     if (extension == "c4d") {
         return true;
@@ -177,10 +166,10 @@ void C4DImporter::InternReadFile( const std::string& pFile, aiScene* pScene, IOS
     // copy meshes over
     pScene->mNumMeshes = static_cast<unsigned int>(meshes.size());
     pScene->mMeshes = new aiMesh*[pScene->mNumMeshes]();
-    std::copy(meshes.begin(), meshes.end(), pScene->mMeshes);
+    std::copy(mMeshes.begin(), mMeshes.end(), pScene->mMeshes);
 
     // copy materials over, adding a default material if necessary
-    unsigned int mat_count = static_cast<unsigned int>(materials.size());
+    unsigned int mat_count = static_cast<unsigned int>(mMaterials.size());
     for(aiMesh* mesh : meshes) {
         ai_assert(mesh->mMaterialIndex <= mat_count);
         if(mesh->mMaterialIndex >= mat_count) {
@@ -190,16 +179,15 @@ void C4DImporter::InternReadFile( const std::string& pFile, aiScene* pScene, IOS
             const aiString name(AI_DEFAULT_MATERIAL_NAME);
             def_material->AddProperty(&name, AI_MATKEY_NAME);
 
-            materials.push_back(def_material.release());
+            mMaterials.push_back(def_material.release());
             break;
         }
     }
 
     pScene->mNumMaterials = static_cast<unsigned int>(materials.size());
     pScene->mMaterials = new aiMaterial*[pScene->mNumMaterials]();
-    std::copy(materials.begin(), materials.end(), pScene->mMaterials);
+    std::copy(mMaterials.begin(), mMaterials.end(), pScene->mMaterials);
 }
-
 
 // ------------------------------------------------------------------------------------------------
 bool C4DImporter::ReadShader(aiMaterial* out, BaseShader* shader) {
@@ -263,8 +251,8 @@ void C4DImporter::ReadMaterials(BaseMaterial* mat) {
     while (mat) {
         if (mat->GetType() == Mmaterial) {
             aiMaterial* out = new aiMaterial();
-            material_mapping[mat] = static_cast<unsigned int>(materials.size());
-            materials.push_back(out);
+            mMaterialMapping[mat] = static_cast<unsigned int>(mMaterials.size());
+            mMaterials.push_back(out);
 
             auto const ai_name = aiStringFrom(mat->GetName());
             out->AddProperty(&ai_name, AI_MATKEY_NAME);
@@ -301,11 +289,11 @@ void C4DImporter::ReadMaterials(BaseMaterial* mat) {
 // ------------------------------------------------------------------------------------------------
 void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
     ai_assert(parent != nullptr );
-    std::vector<aiNode*> nodes;
+    NodeArray nodes;
 
     // based on Cineware sample code
     while (object) {
-        const LONG type = object->GetType();
+        const Int32 type = object->GetType();
         const Matrix& ml = object->GetMl();
 
         aiNode* const nd = new aiNode();
@@ -368,8 +356,8 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     PolygonObject* const polyObject = dynamic_cast<PolygonObject*>(object);
     ai_assert(polyObject != nullptr);
 
-    const LONG pointCount = polyObject->GetPointCount();
-    const LONG polyCount = polyObject->GetPolygonCount();
+    const Int32 pointCount = polyObject->GetPointCount();
+    const Int32 polyCount = polyObject->GetPolygonCount();
     if(!polyObject || !pointCount) {
         LogWarn("ignoring mesh with zero vertices or faces");
         return nullptr;
@@ -391,7 +379,7 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     unsigned int vcount = 0;
 
     // first count vertices
-    for (LONG i = 0; i < polyCount; i++)
+    for (Int32 i = 0; i < polyCount; i++)
     {
         vcount += 3;
 
@@ -434,7 +422,7 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     }
 
     // copy vertices and extra channels over and populate faces
-    for (LONG i = 0; i < polyCount; ++i, ++face) {
+    for (Int32 i = 0; i < polyCount; ++i, ++face) {
         ai_assert(polys[i].a < pointCount && polys[i].a >= 0);
         const Vector& pointA = points[polys[i].a];
         verts->x = pointA.x;
@@ -511,7 +499,7 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
         if (tangents_src) {
 
             for(unsigned int k = 0; k < face->mNumIndices; ++k) {
-                LONG l;
+                Int32 l;
                 switch(k) {
                 case 0:
                     l = polys[i].a;
@@ -589,7 +577,7 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
 unsigned int C4DImporter::ResolveMaterial(PolygonObject* obj) {
     ai_assert(obj != nullptr);
 
-    const unsigned int mat_count = static_cast<unsigned int>(materials.size());
+    const unsigned int mat_count = static_cast<unsigned int>(mMaterials.size());
 
     BaseTag* tag = obj->GetTag(Ttexture);
     if(tag == nullptr) {
